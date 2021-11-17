@@ -1,3 +1,9 @@
-var a = '2'
-console.log(a)
-console.log('dsds')
+import { initMixin } from './init'
+
+function Vue(options) {
+  this._init(options)
+}
+
+initMixin(Vue)
+
+export default Vue
