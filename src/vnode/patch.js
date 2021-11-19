@@ -5,6 +5,8 @@ export function patch(oldVnode, newVnode) {
     parentNode.insertBefore(el, oldVnode.nextSibling)
 
     parentNode.removeChild(oldVnode)
+
+    return el
   }
 }
 

@@ -15,7 +15,7 @@ export function lifeCycleMixin(Vue) {
     return createTextElement(this, text)
   }
   Vue.prototype._update = function (vnode) {
-    patch(this.$el, vnode)
+    this.$el = patch(this.$el, vnode)
   }
   Vue.prototype._render = function () {
     const vm = this

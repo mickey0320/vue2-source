@@ -75,6 +75,38 @@
     }
   })
 
+  var id$1 = 0
+
+  var Dep = /*#__PURE__*/ (function () {
+    function Dep() {
+      _classCallCheck(this, Dep)
+
+      this.id = id$1++
+      this.subs = []
+    }
+
+    _createClass(Dep, [
+      {
+        key: 'depend',
+        value: function depend() {
+          this.subs.push(Dep.target)
+        },
+      },
+      {
+        key: 'notify',
+        value: function notify() {
+          this.subs.forEach(function (watcher) {
+            return watcher.update()
+          })
+        },
+      },
+    ])
+
+    return Dep
+  })()
+
+  Dep.target = null
+
   var Observer = /*#__PURE__*/ (function () {
     function Observer(data) {
       _classCallCheck(this, Observer)
@@ -115,14 +147,20 @@
   })()
 
   function defineReactive(target, key, value) {
+    var dep = new Dep()
     Object.defineProperty(target, key, {
       get: function get() {
+        if (Dep.target) {
+          dep.depend()
+        }
+
         return value
       },
       set: function set(newValue) {
         if (value !== newValue) {
           value = newValue
           observe(newValue)
+          dep.notify()
         }
       },
     })
@@ -426,6 +464,7 @@
       var parentNode = oldVnode.parentNode
       parentNode.insertBefore(el, oldVnode.nextSibling)
       parentNode.removeChild(oldVnode)
+      return el
     }
   }
 
@@ -464,7 +503,7 @@
     }
 
     Vue.prototype._update = function (vnode) {
-      patch(this.$el, vnode)
+      this.$el = patch(this.$el, vnode)
     }
 
     Vue.prototype._render = function () {
@@ -481,6 +520,38 @@
 
     updateComponent()
   }
+
+  var id = 0
+
+  var Watcher = /*#__PURE__*/ (function () {
+    function Watcher(vm, fn) {
+      _classCallCheck(this, Watcher)
+
+      this.id = id++
+      this.vm = vm
+      this.getter = fn
+      this.get()
+    }
+
+    _createClass(Watcher, [
+      {
+        key: 'get',
+        value: function get() {
+          Dep.target = this
+          this.getter(this.vm)
+          Dep.target = null
+        },
+      },
+      {
+        key: 'update',
+        value: function update() {
+          this.get()
+        },
+      },
+    ])
+
+    return Watcher
+  })()
 
   function initMixin(Vue) {
     Vue.prototype._init = function (options) {
@@ -502,7 +573,8 @@
         options.render = compileToFunction(options.template)
       }
 
-      mountComponent(this)
+      new Watcher(this, mountComponent)
+      return this // mountComponent(this, el)
     }
   }
 

@@ -1,6 +1,7 @@
 import initState from './state'
 import { compileToFunction } from './compile/index.js'
 import { mountComponent } from './lifecycle'
+import Watcher from './observer/watcher'
 
 export function initMixin(Vue) {
   Vue.prototype._init = function (options) {
@@ -18,6 +19,9 @@ export function initMixin(Vue) {
       }
       options.render = compileToFunction(options.template)
     }
-    mountComponent(this, el)
+    new Watcher(this, mountComponent)
+
+    return this
+    // mountComponent(this, el)
   }
 }
