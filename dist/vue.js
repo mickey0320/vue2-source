@@ -173,6 +173,8 @@
     observe(data)
   }
 
+  var defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g // {{   xxx  }}
+
   function genProps(attrs) {
     var str = ''
     attrs.forEach(function (attr) {
@@ -204,9 +206,36 @@
     return false
   }
 
-  function gen(ast) {
-    if (ast.type === 1) {
-      return generate(ast)
+  function gen(el) {
+    if (el.type === 1) {
+      return generate(el)
+    } else {
+      var text = el.text
+
+      if (!defaultTagRE.test(text)) {
+        return '_v("'.concat(text, '")')
+      } else {
+        var tokens = []
+        var match
+        var lastIndex = (defaultTagRE.lastIndex = 0)
+
+        while ((match = defaultTagRE.exec(text))) {
+          var index = match.index
+
+          if (index > lastIndex) {
+            tokens.push(''.concat(JSON.stringify(text.slice(lastIndex, index))))
+          }
+
+          tokens.push('_s('.concat(match[1].trim(), ')'))
+          lastIndex = index + match[0].length
+        }
+
+        if (lastIndex < text.length) {
+          tokens.push(''.concat(JSON.stringify(text.slice(lastIndex))))
+        }
+
+        return '_v('.concat(tokens.join('+'), ')')
+      }
     }
   }
 
@@ -215,7 +244,7 @@
     var code = "_c('"
       .concat(ast.tag, "',")
       .concat(ast.attrs.length ? genProps(ast.attrs) : undefined)
-      .concat(children ? ',' + children : '', ')')
+      .concat(children ? ',' + '[' + children + ']' : '', ')')
     return code
   }
 
@@ -226,12 +255,12 @@
   var startTagOpen = new RegExp('^<'.concat(qnameCapture)) //  此正则可以匹配到标签名 匹配到结果的第一个(索引第一个) [1]
 
   var endTag = new RegExp('^<\\/'.concat(qnameCapture, '[^>]*>')) // 匹配标签结尾的 </div>  [1]
+  // eslint-disable-next-line no-useless-escape
 
   var attribute = /^\s*([^\s"'<>\/=]+)(?:\s*(=)\s*(?:"([^"]*)"+|'([^']*)'+|([^\s"'=<>`]+)))?/ // 匹配属性的
   // [1]属性的key   [3] || [4] ||[5] 属性的值  a=1  a='1'  a=""
 
   var startTagClose = /^\s*(\/?)>/ // 匹配标签结束的  />    >
-  // const defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g // {{   xxx  }}
   // vue3的编译原理比vue2里好很多，没有这么多正则了
 
   function parserHTML(html) {
@@ -366,11 +395,91 @@
 
   function compileToFunction(template) {
     var ast = parserHTML(template)
-    console.log(ast)
     var code = generate(ast)
-    console.log(code)
-    var render = new Function('with(this){'.concat(code, '}'))
+    var render = new Function('with(this){return '.concat(code, '}'))
     return render
+  }
+
+  function createElement(vm, tag) {
+    var props = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {}
+    var children = arguments.length > 3 ? arguments[3] : undefined
+    return vnode(vm, tag, props, children, undefined, props.key)
+  }
+  function createTextElement(vm, text) {
+    return vnode(vm, undefined, undefined, undefined, text, undefined)
+  }
+
+  function vnode(vm, tag, props, children, text, key) {
+    return {
+      vm: vm,
+      tag: tag,
+      props: props,
+      children: children,
+      text: text,
+      key: key,
+    }
+  }
+
+  function patch(oldVnode, newVnode) {
+    if (oldVnode.nodeType === 1) {
+      var el = createEle(newVnode)
+      var parentNode = oldVnode.parentNode
+      parentNode.insertBefore(el, oldVnode.nextSibling)
+      parentNode.removeChild(oldVnode)
+    }
+  }
+
+  function createEle(vnode) {
+    if (typeof vnode.tag === 'string') {
+      vnode.el = document.createElement(vnode.tag)
+      vnode.children.forEach(function (childVnode) {
+        vnode.el.appendChild(createEle(childVnode))
+      })
+    } else {
+      vnode.el = document.createTextNode(vnode.text)
+    }
+
+    return vnode.el
+  }
+
+  function lifeCycleMixin(Vue) {
+    Vue.prototype._c = function () {
+      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key]
+      }
+
+      return createElement.apply(void 0, [this].concat(args))
+    }
+
+    Vue.prototype._s = function (val) {
+      if (_typeof(val) === 'object') {
+        return JSON.stringify(val)
+      }
+
+      return val
+    }
+
+    Vue.prototype._v = function (text) {
+      return createTextElement(this, text)
+    }
+
+    Vue.prototype._update = function (vnode) {
+      patch(this.$el, vnode)
+    }
+
+    Vue.prototype._render = function () {
+      var vm = this
+      var render = vm.$options.render
+      var vnode = render.call(vm)
+      return vnode
+    }
+  }
+  var mountComponent = function mountComponent(vm) {
+    function updateComponent() {
+      vm._update(vm._render())
+    }
+
+    updateComponent()
   }
 
   function initMixin(Vue) {
@@ -382,6 +491,7 @@
 
     Vue.prototype.$mount = function (el) {
       el = document.querySelector(el)
+      this.$el = el
       var options = this.$options
 
       if (!options.render) {
@@ -391,6 +501,8 @@
 
         options.render = compileToFunction(options.template)
       }
+
+      mountComponent(this)
     }
   }
 
@@ -399,6 +511,7 @@
   }
 
   initMixin(Vue)
+  lifeCycleMixin(Vue)
 
   return Vue
 })

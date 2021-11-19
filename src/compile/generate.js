@@ -1,3 +1,5 @@
+const defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g // {{   xxx  }}
+
 function genProps(attrs) {
   let str = ``
   attrs.forEach((attr) => {
@@ -23,17 +25,38 @@ function genChildren(ast) {
   return false
 }
 
-function gen(ast) {
-  if (ast.type === 1) {
-    return generate(ast)
+function gen(el) {
+  if (el.type === 1) {
+    return generate(el)
   } else {
-    //
+    const text = el.text
+    if (!defaultTagRE.test(text)) {
+      return `_v("${text}")`
+    } else {
+      const tokens = []
+      let match
+      let lastIndex = (defaultTagRE.lastIndex = 0)
+      while ((match = defaultTagRE.exec(text))) {
+        const index = match.index
+        if (index > lastIndex) {
+          tokens.push(`${JSON.stringify(text.slice(lastIndex, index))}`)
+        }
+        tokens.push(`_s(${match[1].trim()})`)
+        lastIndex = index + match[0].length
+      }
+      if (lastIndex < text.length) {
+        tokens.push(`${JSON.stringify(text.slice(lastIndex))}`)
+      }
+      return `_v(${tokens.join('+')})`
+    }
   }
 }
 
 export function generate(ast) {
   const children = genChildren(ast)
-  const code = `_c('${ast.tag}',${ast.attrs.length ? genProps(ast.attrs) : undefined}${children ? ',' + children : ''})`
+  const code = `_c('${ast.tag}',${ast.attrs.length ? genProps(ast.attrs) : undefined}${
+    children ? ',' + '[' + children + ']' : ''
+  })`
 
   return code
 }
