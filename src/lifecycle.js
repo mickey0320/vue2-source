@@ -1,5 +1,6 @@
 import { createElement, createTextElement } from './vnode/index.js'
 import { patch } from './vnode/patch'
+import Watcher from './observer/watcher'
 
 export function lifeCycleMixin(Vue) {
   Vue.prototype._c = function (...args) {
@@ -30,5 +31,5 @@ export const mountComponent = (vm) => {
   function updateComponent() {
     vm._update(vm._render())
   }
-  updateComponent()
+  new Watcher(updateComponent)
 }

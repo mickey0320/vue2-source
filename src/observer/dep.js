@@ -5,7 +5,10 @@ class Dep {
     this.subs = []
   }
   depend() {
-    this.subs.push(Dep.target)
+    Dep.target.addDep(this)
+  }
+  addSub(watcher) {
+    this.subs.push(watcher)
   }
   notify() {
     this.subs.forEach((watcher) => watcher.update())

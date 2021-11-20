@@ -3,6 +3,7 @@ import Dep from './dep'
 
 class Observer {
   constructor(data) {
+    this.dep = new Dep()
     Object.defineProperty(data, '__ob__', {
       value: this,
       enumerable: false,
@@ -26,11 +27,16 @@ class Observer {
 
 function defineReactive(target, key, value) {
   const dep = new Dep()
+  const childOb = observe(value)
   Object.defineProperty(target, key, {
     get() {
       if (Dep.target) {
         dep.depend()
+        if (childOb) {
+          childOb.dep.depend()
+        }
       }
+
       return value
     },
     set(newValue) {
@@ -41,7 +47,6 @@ function defineReactive(target, key, value) {
       }
     },
   })
-  observe(value)
 }
 
 export function observe(data) {
@@ -49,5 +54,5 @@ export function observe(data) {
     return
   }
   if (data.__ob__) return
-  new Observer(data)
+  return new Observer(data)
 }

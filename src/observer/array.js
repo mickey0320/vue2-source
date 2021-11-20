@@ -18,6 +18,7 @@ methods.forEach((method) => {
         break
     }
     if (inserted) this.__ob__.observeArray(inserted)
+    this.__ob__.dep.notify()
 
     return ret
   }

@@ -71,6 +71,9 @@
       }
 
       if (inserted) this.__ob__.observeArray(inserted)
+
+      this.__ob__.dep.notify()
+
       return ret
     }
   })
@@ -89,7 +92,13 @@
       {
         key: 'depend',
         value: function depend() {
-          this.subs.push(Dep.target)
+          Dep.target.addDep(this)
+        },
+      },
+      {
+        key: 'addSub',
+        value: function addSub(watcher) {
+          this.subs.push(watcher)
         },
       },
       {
@@ -111,6 +120,7 @@
     function Observer(data) {
       _classCallCheck(this, Observer)
 
+      this.dep = new Dep()
       Object.defineProperty(data, '__ob__', {
         value: this,
         enumerable: false,
@@ -148,10 +158,15 @@
 
   function defineReactive(target, key, value) {
     var dep = new Dep()
+    var childOb = observe(value)
     Object.defineProperty(target, key, {
       get: function get() {
         if (Dep.target) {
           dep.depend()
+
+          if (childOb) {
+            childOb.dep.depend()
+          }
         }
 
         return value
@@ -164,7 +179,6 @@
         }
       },
     })
-    observe(value)
   }
 
   function observe(data) {
@@ -173,7 +187,7 @@
     }
 
     if (data.__ob__) return
-    new Observer(data)
+    return new Observer(data)
   }
 
   function initState(vm) {
@@ -481,6 +495,122 @@
     return vnode.el
   }
 
+  var callbacks = []
+  var waiting = false
+  var timerFun
+
+  if (typeof Promise !== 'undefined') {
+    timerFun = function timerFun() {
+      return Promise.resolve().then(flushCallbacks)
+    }
+  } else if (window.MutationObserver) {
+    var observer = new window.MutationObserver(flushCallbacks)
+    var textNode = document.createTextNode(1)
+    observer.observe(textNode, {
+      characterData: true,
+    })
+
+    timerFun = function timerFun() {
+      textNode.textContent = 2
+    }
+  } else if (window.setImmediate) {
+    timerFun = window.setImmediate(flushCallbacks)
+  } else {
+    timerFun = window.setTimeout(flushCallbacks)
+  }
+
+  function nextTick(callback) {
+    callbacks.push(callback)
+
+    if (!waiting) {
+      timerFun(flushCallbacks)
+      waiting = true
+    }
+  }
+
+  function flushCallbacks() {
+    callbacks.forEach(function (cb) {
+      return cb()
+    })
+    callbacks = []
+    waiting = false
+  }
+
+  var queue = []
+  var has = {}
+  var pending = false
+
+  function queueWatcher(watcher) {
+    if (!has[watcher.id]) {
+      queue.push(watcher)
+      has[watcher.id] = true
+
+      if (!pending) {
+        nextTick(flushQueue)
+        pending = true
+      }
+    }
+  }
+
+  function flushQueue() {
+    queue.forEach(function (watcher) {
+      return watcher.run()
+    })
+    queue = []
+    has = {}
+    pending = false
+  }
+
+  var id = 0
+
+  var Watcher = /*#__PURE__*/ (function () {
+    function Watcher(fn) {
+      _classCallCheck(this, Watcher)
+
+      this.id = id++
+      this.getter = fn
+      this.depIds = new Set()
+      this.deps = []
+      this.get()
+    }
+
+    _createClass(Watcher, [
+      {
+        key: 'addDep',
+        value: function addDep(dep) {
+          if (!this.depIds.has(dep.id)) {
+            this.depIds.add(dep.id)
+            this.deps.push(dep)
+            dep.addSub(this)
+          }
+        },
+      },
+      {
+        key: 'get',
+        value: function get() {
+          Dep.target = this
+          this.getter()
+          Dep.target = null
+        },
+      },
+      {
+        key: 'update',
+        value: function update() {
+          queueWatcher(this)
+        },
+      },
+      {
+        key: 'run',
+        value: function run() {
+          console.log('run')
+          this.get()
+        },
+      },
+    ])
+
+    return Watcher
+  })()
+
   function lifeCycleMixin(Vue) {
     Vue.prototype._c = function () {
       for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
@@ -518,40 +648,8 @@
       vm._update(vm._render())
     }
 
-    updateComponent()
+    new Watcher(updateComponent)
   }
-
-  var id = 0
-
-  var Watcher = /*#__PURE__*/ (function () {
-    function Watcher(vm, fn) {
-      _classCallCheck(this, Watcher)
-
-      this.id = id++
-      this.vm = vm
-      this.getter = fn
-      this.get()
-    }
-
-    _createClass(Watcher, [
-      {
-        key: 'get',
-        value: function get() {
-          Dep.target = this
-          this.getter(this.vm)
-          Dep.target = null
-        },
-      },
-      {
-        key: 'update',
-        value: function update() {
-          this.get()
-        },
-      },
-    ])
-
-    return Watcher
-  })()
 
   function initMixin(Vue) {
     Vue.prototype._init = function (options) {
@@ -573,8 +671,8 @@
         options.render = compileToFunction(options.template)
       }
 
-      new Watcher(this, mountComponent)
-      return this // mountComponent(this, el)
+      mountComponent(this)
+      return this
     }
   }
 
