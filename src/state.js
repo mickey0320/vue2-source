@@ -5,6 +5,9 @@ function initState(vm) {
   if (options.data) {
     initData(vm)
   }
+  if (options.watch) {
+    initWatch(vm)
+  }
 }
 
 function proxy(target, key, property) {
@@ -28,6 +31,17 @@ function initData(vm) {
     proxy(vm, '_data', key)
   }
   observe(data)
+}
+
+function initWatch(vm) {
+  const watch = vm.$options.watch
+  for (let key in watch) {
+    createWatcher(vm, key, watch[key])
+  }
+}
+
+function createWatcher(vm, key, handler) {
+  vm.$watch(key, handler)
 }
 
 export default initState

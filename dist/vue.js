@@ -49,8 +49,8 @@
 
   var oldArrayPrototype = Array.prototype
   var arrayProto = Object.create(oldArrayPrototype)
-  var methods = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort']
-  methods.forEach(function (method) {
+  var methods$1 = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort']
+  methods$1.forEach(function (method) {
     arrayProto[method] = function () {
       for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
         args[_key] = arguments[_key]
@@ -196,6 +196,10 @@
     if (options.data) {
       initData(vm)
     }
+
+    if (options.watch) {
+      initWatch(vm)
+    }
   }
 
   function proxy(target, key, property) {
@@ -223,6 +227,18 @@
     }
 
     observe(data)
+  }
+
+  function initWatch(vm) {
+    var watch = vm.$options.watch
+
+    for (var key in watch) {
+      createWatcher(vm, key, watch[key])
+    }
+  }
+
+  function createWatcher(vm, key, handler) {
+    vm.$watch(key, handler)
   }
 
   var defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g // {{   xxx  }}
@@ -564,14 +580,28 @@
   var id = 0
 
   var Watcher = /*#__PURE__*/ (function () {
-    function Watcher(fn) {
+    function Watcher(vm, expOrFn, callback) {
+      var options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {}
+
       _classCallCheck(this, Watcher)
 
       this.id = id++
-      this.getter = fn
+      this.vm = vm
+      this.expOrFn = expOrFn
+      this.callback = callback
+      this.options = options
       this.depIds = new Set()
       this.deps = []
-      this.get()
+
+      if (typeof expOrFn === 'function') {
+        this.getter = expOrFn
+      } else {
+        this.getter = function () {
+          return vm[expOrFn]
+        }
+      }
+
+      this.value = this.get()
     }
 
     _createClass(Watcher, [
@@ -589,8 +619,9 @@
         key: 'get',
         value: function get() {
           Dep.target = this
-          this.getter()
+          var value = this.getter()
           Dep.target = null
+          return value
         },
       },
       {
@@ -602,8 +633,13 @@
       {
         key: 'run',
         value: function run() {
-          console.log('run')
-          this.get()
+          var newValue = this.get()
+
+          if (this.options.user) {
+            this.callback(newValue, this.value)
+          }
+
+          this.value = newValue
         },
       },
     ])
@@ -648,13 +684,56 @@
       vm._update(vm._render())
     }
 
-    new Watcher(updateComponent)
+    new Watcher(vm, updateComponent, function () {
+      //
+    })
+  }
+
+  var strats = {}
+  var methods = ['beforeCreate', 'created', 'beforeMount', 'mounted']
+  methods.forEach(function (method) {
+    strats[method] = function (globalVal, instanceVal) {
+      if (instanceVal) {
+        if (globalVal) {
+          return globalVal.concat(instanceVal)
+        } else {
+          return [instanceVal]
+        }
+      } else {
+        return globalVal
+      }
+    }
+  })
+
+  function mergeOptions(globalOptions, instanceOptions) {
+    var options = {}
+
+    for (var key in globalOptions) {
+      options[key] = mergeFiled(key)
+    }
+
+    for (var _key in instanceOptions) {
+      // eslint-disable-next-line no-prototype-builtins
+      if (!globalOptions.hasOwnProperty(_key)) {
+        options[_key] = mergeFiled(_key)
+      }
+    }
+
+    function mergeFiled(key) {
+      if (strats[key]) {
+        return strats[key](globalOptions[key], instanceOptions[key])
+      } else {
+        return instanceOptions[key] || globalOptions[key]
+      }
+    }
+
+    return options
   }
 
   function initMixin(Vue) {
     Vue.prototype._init = function (options) {
       var vm = this
-      vm.$options = options
+      vm.$options = mergeOptions(this.constructor.options, options)
       initState(vm)
     }
 
@@ -674,12 +753,28 @@
       mountComponent(this)
       return this
     }
+
+    Vue.prototype.$watch = function (key, handler) {
+      new Watcher(this, key, handler, {
+        user: true,
+      })
+    }
+  }
+
+  function initGlobalApi(Vue) {
+    Vue.options = {}
+
+    Vue.mixin = function (options) {
+      Vue.options = mergeOptions(this.options, options)
+      console.log(Vue.options)
+    }
   }
 
   function Vue(options) {
     this._init(options)
   }
 
+  initGlobalApi(Vue)
   initMixin(Vue)
   lifeCycleMixin(Vue)
 

@@ -8,21 +8,23 @@
   </head>
   <body>
     <div id="app" a="1" b="2">
-      <p>hello,{{name}}</p>
-      <p>age:{{age}}</p>
-      <p>{{arr}}</p>
+      <p>{{name}}</p>
     </div>
     <script src="../dist/vue.js"></script>
     <script>
       const vm = new Vue({
         data: {
           name: 'yanjian',
-          age: 25,
-          arr: [1, 2, 3],
         },
-      }).$mount('#app')
+        watch: {
+          name: function (newVal, oldVal) {
+            console.log(newVal, oldVal)
+          },
+        },
+      })
+      vm.$mount('#app')
       setTimeout(() => {
-        vm.arr.push(4)
+        vm.name = 'zhangsan'
       }, 1000)
     </script>
   </body>
