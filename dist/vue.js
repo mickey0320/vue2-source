@@ -47,37 +47,6 @@
     return Constructor
   }
 
-  var oldArrayPrototype = Array.prototype
-  var arrayProto = Object.create(oldArrayPrototype)
-  var methods$1 = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort']
-  methods$1.forEach(function (method) {
-    arrayProto[method] = function () {
-      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
-        args[_key] = arguments[_key]
-      }
-
-      var ret = oldArrayPrototype[method].apply(this, args)
-      var inserted
-
-      switch (method) {
-        case 'push':
-        case 'unshift':
-          inserted = args
-          break
-
-        case 'splice':
-          inserted = args.slice(3)
-          break
-      }
-
-      if (inserted) this.__ob__.observeArray(inserted)
-
-      this.__ob__.dep.notify()
-
-      return ret
-    }
-  })
-
   var id$1 = 0
 
   var Dep = /*#__PURE__*/ (function () {
@@ -114,7 +83,46 @@
     return Dep
   })()
 
-  Dep.target = null
+  var stack = []
+  function pushTarget(watcher) {
+    stack.push(watcher)
+    Dep.target = watcher
+  }
+  function popTarget() {
+    stack.pop()
+    Dep.target = stack[stack.length - 1]
+  }
+
+  var oldArrayPrototype = Array.prototype
+  var arrayProto = Object.create(oldArrayPrototype)
+  var methods$1 = ['push', 'pop', 'shift', 'unshift', 'splice', 'sort']
+  methods$1.forEach(function (method) {
+    arrayProto[method] = function () {
+      for (var _len = arguments.length, args = new Array(_len), _key = 0; _key < _len; _key++) {
+        args[_key] = arguments[_key]
+      }
+
+      var ret = oldArrayPrototype[method].apply(this, args)
+      var inserted
+
+      switch (method) {
+        case 'push':
+        case 'unshift':
+          inserted = args
+          break
+
+        case 'splice':
+          inserted = args.slice(3)
+          break
+      }
+
+      if (inserted) this.__ob__.observeArray(inserted)
+
+      this.__ob__.dep.notify()
+
+      return ret
+    }
+  })
 
   var Observer = /*#__PURE__*/ (function () {
     function Observer(data) {
@@ -190,6 +198,164 @@
     return new Observer(data)
   }
 
+  var callbacks = []
+  var waiting = false
+  var timerFun
+
+  if (typeof Promise !== 'undefined') {
+    timerFun = function timerFun() {
+      return Promise.resolve().then(flushCallbacks)
+    }
+  } else if (window.MutationObserver) {
+    var observer = new window.MutationObserver(flushCallbacks)
+    var textNode = document.createTextNode(1)
+    observer.observe(textNode, {
+      characterData: true,
+    })
+
+    timerFun = function timerFun() {
+      textNode.textContent = 2
+    }
+  } else if (window.setImmediate) {
+    timerFun = window.setImmediate(flushCallbacks)
+  } else {
+    timerFun = window.setTimeout(flushCallbacks)
+  }
+
+  function nextTick(callback) {
+    callbacks.push(callback)
+
+    if (!waiting) {
+      timerFun(flushCallbacks)
+      waiting = true
+    }
+  }
+
+  function flushCallbacks() {
+    callbacks.forEach(function (cb) {
+      return cb()
+    })
+    callbacks = []
+    waiting = false
+  }
+
+  var queue = []
+  var has = {}
+  var pending = false
+
+  function queueWatcher(watcher) {
+    if (!has[watcher.id]) {
+      queue.push(watcher)
+      has[watcher.id] = true
+
+      if (!pending) {
+        nextTick(flushQueue)
+        pending = true
+      }
+    }
+  }
+
+  function flushQueue() {
+    queue.forEach(function (watcher) {
+      return watcher.run()
+    })
+    queue = []
+    has = {}
+    pending = false
+  }
+
+  var id = 0
+
+  var Watcher = /*#__PURE__*/ (function () {
+    function Watcher(vm, expOrFn, callback) {
+      var options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {}
+
+      _classCallCheck(this, Watcher)
+
+      this.id = id++
+      this.vm = vm
+      this.expOrFn = expOrFn
+      this.callback = callback
+      this.options = options
+      this.depIds = new Set()
+      this.deps = []
+      this.dirty = this.options.lazy
+
+      if (typeof expOrFn === 'function') {
+        this.getter = expOrFn
+      } else {
+        this.getter = function () {
+          return vm[expOrFn]
+        }
+      }
+
+      this.value = this.options.lazy ? undefined : this.get()
+    }
+
+    _createClass(Watcher, [
+      {
+        key: 'addDep',
+        value: function addDep(dep) {
+          if (!this.depIds.has(dep.id)) {
+            this.depIds.add(dep.id)
+            this.deps.push(dep)
+            dep.addSub(this)
+          }
+        },
+      },
+      {
+        key: 'get',
+        value: function get() {
+          pushTarget(this)
+          var value = this.getter.call(this.vm)
+          popTarget()
+          return value
+        },
+      },
+      {
+        key: 'update',
+        value: function update() {
+          if (this.options.dirty) {
+            this.dirty = false
+          } else {
+            queueWatcher(this)
+          }
+        },
+      },
+      {
+        key: 'evaluate',
+        value: function evaluate() {
+          this.value = this.get()
+          this.dirty = false
+        },
+      },
+      {
+        key: 'depend',
+        value: function depend() {
+          var l = this.deps.length
+
+          while (l) {
+            this.deps[--l].depend()
+          }
+        },
+      },
+      {
+        key: 'run',
+        value: function run() {
+          var newValue = this.get()
+
+          if (this.options.user) {
+            this.callback(newValue, this.value)
+          }
+
+          this.value = newValue
+        },
+      },
+    ])
+
+    return Watcher
+  })()
+
   function initState(vm) {
     var options = vm.$options
 
@@ -199,6 +365,10 @@
 
     if (options.watch) {
       initWatch(vm)
+    }
+
+    if (options.computed) {
+      initComputed(vm)
     }
   }
 
@@ -239,6 +409,37 @@
 
   function createWatcher(vm, key, handler) {
     vm.$watch(key, handler)
+  }
+
+  function initComputed(vm) {
+    var computed = vm.$options.computed
+    vm._watchers = {}
+
+    for (var key in computed) {
+      var userDef = computed[key]
+      vm._watchers[key] = new Watcher(vm, userDef, function () {}, {
+        lazy: true,
+      })
+      defineComputed(vm, key)
+    }
+  }
+
+  function defineComputed(vm, key) {
+    Object.defineProperty(vm, key, {
+      get: function get() {
+        var watcher = vm._watchers[key]
+
+        if (watcher !== null && watcher !== void 0 && watcher.dirty) {
+          watcher.evaluate()
+        }
+
+        if (Dep.target) {
+          watcher.depend()
+        }
+
+        return watcher.value
+      },
+    })
   }
 
   var defaultTagRE = /\{\{((?:.|\r?\n)+?)\}\}/g // {{   xxx  }}
@@ -510,142 +711,6 @@
 
     return vnode.el
   }
-
-  var callbacks = []
-  var waiting = false
-  var timerFun
-
-  if (typeof Promise !== 'undefined') {
-    timerFun = function timerFun() {
-      return Promise.resolve().then(flushCallbacks)
-    }
-  } else if (window.MutationObserver) {
-    var observer = new window.MutationObserver(flushCallbacks)
-    var textNode = document.createTextNode(1)
-    observer.observe(textNode, {
-      characterData: true,
-    })
-
-    timerFun = function timerFun() {
-      textNode.textContent = 2
-    }
-  } else if (window.setImmediate) {
-    timerFun = window.setImmediate(flushCallbacks)
-  } else {
-    timerFun = window.setTimeout(flushCallbacks)
-  }
-
-  function nextTick(callback) {
-    callbacks.push(callback)
-
-    if (!waiting) {
-      timerFun(flushCallbacks)
-      waiting = true
-    }
-  }
-
-  function flushCallbacks() {
-    callbacks.forEach(function (cb) {
-      return cb()
-    })
-    callbacks = []
-    waiting = false
-  }
-
-  var queue = []
-  var has = {}
-  var pending = false
-
-  function queueWatcher(watcher) {
-    if (!has[watcher.id]) {
-      queue.push(watcher)
-      has[watcher.id] = true
-
-      if (!pending) {
-        nextTick(flushQueue)
-        pending = true
-      }
-    }
-  }
-
-  function flushQueue() {
-    queue.forEach(function (watcher) {
-      return watcher.run()
-    })
-    queue = []
-    has = {}
-    pending = false
-  }
-
-  var id = 0
-
-  var Watcher = /*#__PURE__*/ (function () {
-    function Watcher(vm, expOrFn, callback) {
-      var options = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {}
-
-      _classCallCheck(this, Watcher)
-
-      this.id = id++
-      this.vm = vm
-      this.expOrFn = expOrFn
-      this.callback = callback
-      this.options = options
-      this.depIds = new Set()
-      this.deps = []
-
-      if (typeof expOrFn === 'function') {
-        this.getter = expOrFn
-      } else {
-        this.getter = function () {
-          return vm[expOrFn]
-        }
-      }
-
-      this.value = this.get()
-    }
-
-    _createClass(Watcher, [
-      {
-        key: 'addDep',
-        value: function addDep(dep) {
-          if (!this.depIds.has(dep.id)) {
-            this.depIds.add(dep.id)
-            this.deps.push(dep)
-            dep.addSub(this)
-          }
-        },
-      },
-      {
-        key: 'get',
-        value: function get() {
-          Dep.target = this
-          var value = this.getter()
-          Dep.target = null
-          return value
-        },
-      },
-      {
-        key: 'update',
-        value: function update() {
-          queueWatcher(this)
-        },
-      },
-      {
-        key: 'run',
-        value: function run() {
-          var newValue = this.get()
-
-          if (this.options.user) {
-            this.callback(newValue, this.value)
-          }
-
-          this.value = newValue
-        },
-      },
-    ])
-
-    return Watcher
-  })()
 
   function lifeCycleMixin(Vue) {
     Vue.prototype._c = function () {

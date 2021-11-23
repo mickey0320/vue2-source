@@ -1,4 +1,4 @@
-import Dep from './dep'
+import { popTarget, pushTarget } from './dep'
 import queueWatcher from './scheduler'
 
 let id = 0
@@ -11,13 +11,14 @@ class Watcher {
     this.options = options
     this.depIds = new Set()
     this.deps = []
+    this.dirty = this.options.lazy
     if (typeof expOrFn === 'function') {
       this.getter = expOrFn
     } else {
       this.getter = () => vm[expOrFn]
     }
 
-    this.value = this.get()
+    this.value = this.options.lazy ? undefined : this.get()
   }
   addDep(dep) {
     if (!this.depIds.has(dep.id)) {
@@ -27,14 +28,28 @@ class Watcher {
     }
   }
   get() {
-    Dep.target = this
-    const value = this.getter()
-    Dep.target = null
+    pushTarget(this)
+    const value = this.getter.call(this.vm)
+    popTarget()
 
     return value
   }
   update() {
-    queueWatcher(this)
+    if (this.options.dirty) {
+      this.dirty = false
+    } else {
+      queueWatcher(this)
+    }
+  }
+  evaluate() {
+    this.value = this.get()
+    this.dirty = false
+  }
+  depend() {
+    let l = this.deps.length
+    while (l) {
+      this.deps[--l].depend()
+    }
   }
   run() {
     const newValue = this.get()

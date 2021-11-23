@@ -1,4 +1,6 @@
+import Dep from './observer/dep.js'
 import { observe } from './observer/index.js'
+import Watcher from './observer/watcher'
 
 function initState(vm) {
   const options = vm.$options
@@ -7,6 +9,9 @@ function initState(vm) {
   }
   if (options.watch) {
     initWatch(vm)
+  }
+  if (options.computed) {
+    initComputed(vm)
   }
 }
 
@@ -42,6 +47,32 @@ function initWatch(vm) {
 
 function createWatcher(vm, key, handler) {
   vm.$watch(key, handler)
+}
+
+function initComputed(vm) {
+  const computed = vm.$options.computed
+  vm._watchers = {}
+  for (let key in computed) {
+    const userDef = computed[key]
+    vm._watchers[key] = new Watcher(vm, userDef, () => {}, { lazy: true })
+    defineComputed(vm, key)
+  }
+}
+
+function defineComputed(vm, key) {
+  Object.defineProperty(vm, key, {
+    get() {
+      const watcher = vm._watchers[key]
+      if (watcher?.dirty) {
+        watcher.evaluate()
+      }
+      if (Dep.target) {
+        watcher.depend()
+      }
+
+      return watcher.value
+    },
+  })
 }
 
 export default initState
