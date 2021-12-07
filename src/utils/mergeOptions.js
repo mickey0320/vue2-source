@@ -13,6 +13,15 @@ methods.forEach((method) => {
     }
   }
 })
+strats.components = mergeAssets
+function mergeAssets(parentVal, childVal) {
+  const ret = Object.create(parentVal)
+  for (let key in childVal) {
+    ret[key] = childVal[key]
+  }
+
+  return ret
+}
 function mergeOptions(globalOptions, instanceOptions) {
   const options = {}
   for (let key in globalOptions) {

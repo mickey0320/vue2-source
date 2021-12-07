@@ -8,25 +8,25 @@
   </head>
   <body>
     <div id="app" a="1" b="2">
-      <p>{{fullname}}{{fullname}}{{fullname}}</p>
+      <p>sss</p>
     </div>
     <script src="../dist/vue.js"></script>
     <script>
+      Vue.component('my-component', {
+        template: '<div>1</div>',
+      })
       const vm = new Vue({
         data: {
           name: 'yanjian',
           age: 25,
         },
-        computed: {
-          fullname() {
-            console.log('computed')
-            return this.name + ':' + this.age
+        components: {
+          'my-component': {
+            template: '<div>2</div>',
           },
         },
       }).$mount('#app')
-      setTimeout(() => {
-        vm.name = 'yixin'
-      }, 1000)
+      console.log(vm.$options.components)
     </script>
   </body>
 </html>

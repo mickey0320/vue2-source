@@ -769,6 +769,17 @@
       }
     }
   })
+  strats.components = mergeAssets
+
+  function mergeAssets(parentVal, childVal) {
+    var ret = Object.create(parentVal)
+
+    for (var key in childVal) {
+      ret[key] = childVal[key]
+    }
+
+    return ret
+  }
 
   function mergeOptions(globalOptions, instanceOptions) {
     var options = {}
@@ -795,7 +806,7 @@
     return options
   }
 
-  function initMixin(Vue) {
+  function initMixin$1(Vue) {
     Vue.prototype._init = function (options) {
       var vm = this
       vm.$options = mergeOptions(this.constructor.options, options)
@@ -826,13 +837,50 @@
     }
   }
 
-  function initGlobalApi(Vue) {
-    Vue.options = {}
-
+  function initMixin(Vue) {
     Vue.mixin = function (options) {
       Vue.options = mergeOptions(this.options, options)
-      console.log(Vue.options)
     }
+  }
+
+  var ASSET_TYPES = ['component', 'directive', 'filter']
+
+  function initAssetsRegister(Vue) {
+    ASSET_TYPES.forEach(function (type) {
+      Vue[type] = function (id, defination) {
+        switch (type) {
+          case 'component':
+            defination = this.options._base.extend(defination)
+            break
+        }
+
+        this.options[type + 's'][id] = defination
+      }
+    })
+  }
+
+  function initExtend(Vue) {
+    Vue.extend = function (extendOptions) {
+      var Sub = function VueComponent(options) {
+        this._init(options)
+      }
+
+      Sub.prototype = Object.create(this.prototype)
+      Sub.prototype.constructor = Sub
+      Sub.options = mergeOptions(this.options, extendOptions)
+      return Sub
+    }
+  }
+
+  function initGlobalApi(Vue) {
+    Vue.options = {}
+    initMixin(Vue)
+    ASSET_TYPES.forEach(function (type) {
+      Vue.options[type + 's'] = {}
+    })
+    Vue.options._base = Vue
+    initExtend(Vue)
+    initAssetsRegister(Vue)
   }
 
   function Vue(options) {
@@ -840,7 +888,7 @@
   }
 
   initGlobalApi(Vue)
-  initMixin(Vue)
+  initMixin$1(Vue)
   lifeCycleMixin(Vue)
 
   return Vue
